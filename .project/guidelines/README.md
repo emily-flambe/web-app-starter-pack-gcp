@@ -59,9 +59,9 @@ npm run test:e2e    # End-to-end tests
 ```
 
 ### Technology Stack
-- **Frontend**: React 19, TypeScript 5.8, Vite 7, Tailwind CSS 4
-- **Backend**: Cloudflare Workers, D1 Database  
-- **Testing**: Vitest 3, Playwright, React Testing Library 16
+- **Frontend**: React 19, TypeScript 5.8, Vite 7
+- **Backend**: FastAPI (Python 3.11), Google Cloud Run
+- **Testing**: Vitest, Playwright (when configured)
 
 ## File Organization Notes
 

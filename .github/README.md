@@ -1,21 +1,41 @@
-# GitHub Configuration
+# GitHub Configuration & CI/CD
 
-## Required GitHub Secrets for CI/CD
+## Overview
 
-To enable the GitHub Actions CI/CD pipeline, you need to add the following secrets to your repository:
+This repository uses GitHub Actions for continuous integration and deployment to Google Cloud Run.
+
+## Workflows
+
+### CI/CD Pipeline (`workflows/ci-cd.yml`)
+
+**Triggers:**
+- Push to `main` branch → Deploy to production
+- Pull requests to `main` → Run tests and create preview environment
+- PR closed → Clean up preview environment
+
+**Jobs:**
+1. **Build**: Validates Docker build
+2. **Deploy**: Deploys to Cloud Run (production or preview)
+3. **Test & Validate**: Runs linting, type checking, and tests
+4. **Smoke Test**: Validates deployment health
+5. **Cleanup**: Removes preview environments when PR closes
+
+## Required GitHub Secrets
+
+To enable the CI/CD pipeline, add these secrets to your repository:
 
 ### 1. `GCP_PROJECT_ID`
 Your Google Cloud Project ID (e.g., `hello-world-app-470503`)
 
 ### 2. `GCP_SA_KEY`
-The JSON key for a Google Cloud service account with the following permissions:
-- `roles/run.admin` - To deploy and manage Cloud Run services
-- `roles/artifactregistry.writer` - To push Docker images to Artifact Registry
-- `roles/iam.serviceAccountUser` - To act as the service account
+JSON key for a Google Cloud service account with these permissions:
+- `roles/run.admin` - Deploy and manage Cloud Run services
+- `roles/artifactregistry.writer` - Push Docker images
+- `roles/iam.serviceAccountUser` - Act as the service account
 
-## How to Set Up GitHub Secrets
+## Setup Instructions
 
-### Step 1: Create a Service Account
+### Step 1: Create Service Account
 
 ```bash
 # Set your project ID
@@ -54,67 +74,155 @@ gcloud iam service-accounts keys create github-actions-key.json \
 1. Go to your GitHub repository
 2. Navigate to **Settings** → **Secrets and variables** → **Actions**
 3. Click **New repository secret**
-4. Add the following secrets:
+4. Add both secrets:
 
-#### GCP_PROJECT_ID
-- **Name**: `GCP_PROJECT_ID`
-- **Value**: Your project ID (e.g., `hello-world-app-470503`)
+**GCP_PROJECT_ID:**
+- Name: `GCP_PROJECT_ID`
+- Value: Your project ID
 
-#### GCP_SA_KEY
-- **Name**: `GCP_SA_KEY`
-- **Value**: The entire contents of `github-actions-key.json`
+**GCP_SA_KEY:**
+- Name: `GCP_SA_KEY`
+- Value: Contents of `github-actions-key.json`
 
-To get the JSON key contents:
 ```bash
+# Copy the entire JSON content
 cat github-actions-key.json
 ```
-Copy the entire JSON output and paste it as the secret value.
 
-### Step 3: Clean Up Local Key File
+### Step 3: Clean Up
 
-**Important**: Delete the local key file after adding it to GitHub Secrets:
+**Important**: Delete the local key file after adding to GitHub:
 ```bash
 rm github-actions-key.json
 ```
 
-## Testing the CI/CD Pipeline
+### Step 4: Enable Required APIs
 
-Once the secrets are configured:
+```bash
+gcloud services enable cloudbuild.googleapis.com \
+  run.googleapis.com \
+  artifactregistry.googleapis.com
+```
 
-1. **Pull Request**: Opens a PR to trigger the test pipeline
-2. **Merge to Main**: Merging will trigger the deployment pipeline
+## How It Works
 
-The workflows will:
-- Run tests and linting on every PR
-- Deploy to Cloud Run when code is merged to main
-- Optionally create preview environments for PRs
+### Pull Requests
+1. Opens PR → Runs tests and linting
+2. Deploys preview environment at `hello-world-pr-{NUMBER}`
+3. Comments on PR with preview URL
+4. PR closed → Deletes preview environment
 
-## Troubleshooting
+### Main Branch
+1. Push to main → Runs full CI/CD pipeline
+2. Builds Docker image with commit SHA tag
+3. Pushes to Artifact Registry
+4. Deploys to production Cloud Run service
+
+## Preview Environments
+
+Each PR gets a temporary Cloud Run service:
+- **Naming**: `hello-world-pr-{PR_NUMBER}`
+- **Resources**: Limited to 2 instances maximum
+- **Cleanup**: Automatically deleted when PR closes
+- **URL**: Posted as comment on the PR
+
+## Build Optimization
+
+The workflow includes several optimizations:
+- **Docker layer caching**: Reuses unchanged layers
+- **Dependency caching**: Caches Node and Python dependencies
+- **Platform-specific**: Builds for linux/amd64
+- **Selective deployment**: Only deploys from main branch
+
+## Cost Management
+
+### GitHub Actions
+- **Public repos**: Free unlimited minutes
+- **Private repos**: 2,000 free minutes/month
+
+### Google Cloud Run
+- **Free tier**: 2 million requests/month
+- **Preview limits**: Max 2 instances per PR
+- **Auto-cleanup**: Previews deleted on PR close
+
+## Monitoring & Debugging
+
+### View Status
+- **GitHub**: Actions tab in repository
+- **Cloud Run**: [Console](https://console.cloud.google.com/run)
+- **Logs**: `gcloud logging read "resource.type=cloud_run_revision"`
 
 ### Common Issues
 
-1. **Permission Denied**: Ensure the service account has all required roles
-2. **Invalid Key**: Make sure you copied the entire JSON key including brackets
-3. **Project Not Found**: Verify the project ID matches your GCP project
-4. **APIs Not Enabled**: The workflows will try to enable required APIs, but you can do it manually:
-   ```bash
-   gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com
-   ```
+1. **Permission Denied**
+   - Verify service account has all required roles
+   - Check project ID matches
 
-### Verifying Service Account Permissions
+2. **Invalid Key**
+   - Ensure entire JSON was copied including brackets
+   - Check for extra whitespace
 
+3. **APIs Not Enabled**
+   - Run the enable command in Step 4
+   - Wait a few minutes for propagation
+
+### Verify Permissions
 ```bash
-# List roles for the service account
 gcloud projects get-iam-policy $PROJECT_ID \
   --flatten="bindings[].members" \
   --format="table(bindings.role)" \
   --filter="bindings.members:${SA_EMAIL}"
 ```
 
+## Rollback Procedure
+
+If deployment fails:
+
+```bash
+# List revisions
+gcloud run revisions list --service=hello-world-app --region=us-central1
+
+# Rollback to previous revision
+gcloud run services update-traffic hello-world-app \
+  --to-revisions=PREVIOUS_REVISION=100 \
+  --region=us-central1
+```
+
 ## Security Best Practices
 
 - **Never commit service account keys** to the repository
-- **Rotate keys regularly** (every 90 days recommended)
-- **Use Workload Identity Federation** for production (more secure than keys)
-- **Limit permissions** to only what's necessary
+- **Rotate keys regularly** (every 90 days)
+- **Use Workload Identity Federation** for production (more secure)
+- **Limit permissions** to minimum required
 - **Monitor usage** through Cloud Audit Logs
+- **Separate projects** for staging/production
+
+## Advanced: Workload Identity Federation
+
+For enhanced security, use Workload Identity Federation instead of keys:
+
+```bash
+# Enable required APIs
+gcloud services enable iamcredentials.googleapis.com
+
+# Create Workload Identity Pool
+gcloud iam workload-identity-pools create "github-pool" \
+  --location="global" \
+  --display-name="GitHub Actions Pool"
+
+# Create OIDC Provider
+gcloud iam workload-identity-pools providers create-oidc "github-provider" \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --display-name="GitHub Provider" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository"
+
+# Grant permissions to repository
+export REPO="your-username/web-app-starter-pack-gcp"
+gcloud iam service-accounts add-iam-policy-binding ${SA_EMAIL} \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/${REPO}" \
+  --role="roles/iam.workloadIdentityUser"
+```
+
+Then update the workflow to use `google-github-actions/auth@v2` with `workload_identity_provider` instead of `credentials_json`.
