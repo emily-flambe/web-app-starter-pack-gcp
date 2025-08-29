@@ -6,19 +6,29 @@ This repository uses GitHub Actions for continuous integration and deployment to
 
 ## Workflows
 
-### CI/CD Pipeline (`workflows/ci-cd.yml`)
+### PR Validation & Preview (`workflows/deploy-pr.yml`)
 
-**Triggers:**
-- Push to `main` branch → Deploy to production
-- Pull requests to `main` → Run tests and create preview environment
-- PR closed → Clean up preview environment
+**Triggers:** Pull requests to `main` (opened, synchronized, reopened)
+
+**Purpose:** Validate changes and deploy preview environments
 
 **Jobs:**
-1. **Build**: Validates Docker build
-2. **Deploy**: Deploys to Cloud Run (production or preview)
-3. **Test & Validate**: Runs linting, type checking, and tests
-4. **Smoke Test**: Validates deployment health
-5. **Cleanup**: Removes preview environments when PR closes
+1. **Test**: Run linting, type checking, and tests
+2. **Build**: Validate Docker build
+3. **Deploy Preview**: Create `hello-world-pr-{number}` preview environment
+4. **Smoke Test**: Validate preview deployment
+
+### Production Deployment (`workflows/deploy-main.yml`)
+
+**Triggers:** Push to `main` branch
+
+**Purpose:** Deploy to production and cleanup merged PR previews
+
+**Jobs:**
+1. **Test**: Run linting, type checking, and tests
+2. **Deploy**: Deploy to production `hello-world-app` service
+3. **Smoke Test**: Validate production deployment
+4. **Cleanup Preview**: Remove merged PR preview environments
 
 ## Required GitHub Secrets
 
@@ -107,32 +117,22 @@ gcloud services enable cloudbuild.googleapis.com \
 ## How It Works
 
 ### Pull Requests
-1. Opens PR → Runs tests and linting
-2. Deploys preview environment at `hello-world-pr-{NUMBER}`
-3. Comments on PR with preview URL
-4. PR closed → Deletes preview environment
+1. Open/update PR → `deploy-pr.yml` runs
+2. Tests and validation pass
+3. Preview deployed to `hello-world-pr-{NUMBER}`
+4. Bot comments on PR with preview URL
 
-### Main Branch
-1. Push to main → Runs full CI/CD pipeline
-2. Builds Docker image with commit SHA tag
-3. Pushes to Artifact Registry
-4. Deploys to production Cloud Run service
+### Production (Main Branch)
+1. Merge PR or push to main → `deploy-main.yml` runs
+2. Tests and validation pass
+3. Deploy to production `hello-world-app` service
+4. Cleanup merged PR preview environment
+5. Cleanup orphaned previews older than 7 days
 
-## Preview Environments
+## Deployment URLs
 
-Each PR gets a temporary Cloud Run service:
-- **Naming**: `hello-world-pr-{PR_NUMBER}`
-- **Resources**: Limited to 2 instances maximum
-- **Cleanup**: Automatically deleted when PR closes
-- **URL**: Posted as comment on the PR
-
-## Build Optimization
-
-The workflow includes several optimizations:
-- **Docker layer caching**: Reuses unchanged layers
-- **Dependency caching**: Caches Node and Python dependencies
-- **Platform-specific**: Builds for linux/amd64
-- **Selective deployment**: Only deploys from main branch
+- **Production**: Stable URL at `hello-world-app-xxxxx-uc.a.run.app`
+- **PR Previews**: Temporary URLs at `hello-world-pr-{NUMBER}-xxxxx-uc.a.run.app`
 
 ## Cost Management
 
@@ -143,7 +143,7 @@ The workflow includes several optimizations:
 ### Google Cloud Run
 - **Free tier**: 2 million requests/month
 - **Preview limits**: Max 2 instances per PR
-- **Auto-cleanup**: Previews deleted on PR close
+- **Auto-cleanup**: Previews deleted after merge
 
 ## Monitoring & Debugging
 
