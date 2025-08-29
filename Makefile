@@ -51,6 +51,7 @@ help: ## Show available commands
 	@echo "$(GREEN)Deployment:$(NC)"
 	@echo "  $(GREEN)make build$(NC)        - Build Docker image for deployment"
 	@echo "  $(GREEN)make deploy$(NC)       - Deploy to Google Cloud Run"
+	@echo "  $(GREEN)make quick-deploy$(NC) - Deploy directly from source (builds in cloud)"
 	@echo "  $(GREEN)make logs$(NC)         - View Cloud Run logs"
 	@echo "  $(GREEN)make status$(NC)       - Check deployment status"
 	@echo "  $(GREEN)make url$(NC)          - Get deployed service URL"
@@ -298,6 +299,29 @@ deploy: build ## Deploy to Google Cloud Run
 		--port $(PORT) \
 		--memory 512Mi \
 		--project $(PROJECT_ID)
+	@echo "$(GREEN)✓ Deployment complete!$(NC)"
+	@echo "$(GREEN)Service URL:$(NC)"
+	@gcloud run services describe $(SERVICE_NAME) \
+		--platform managed \
+		--region $(REGION) \
+		--project $(PROJECT_ID) \
+		--format 'value(status.url)'
+
+.PHONY: quick-deploy
+quick-deploy: ## Deploy directly from source (builds in cloud)
+	@if [ "$(PROJECT_ID)" = "your-project-id" ]; then \
+		echo "$(RED)Error: PROJECT_ID not set$(NC)"; \
+		echo "Set GCP_PROJECT_ID in .env or run: make quick-deploy PROJECT_ID=your-actual-project-id"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Deploying directly from source using Cloud Build...$(NC)"
+	gcloud run deploy $(SERVICE_NAME) \
+		--source . \
+		--project $(PROJECT_ID) \
+		--region $(REGION) \
+		--allow-unauthenticated \
+		--port $(PORT) \
+		--memory 512Mi
 	@echo "$(GREEN)✓ Deployment complete!$(NC)"
 	@echo "$(GREEN)Service URL:$(NC)"
 	@gcloud run services describe $(SERVICE_NAME) \
