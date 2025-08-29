@@ -205,6 +205,16 @@ jobs:
     needs: deploy-preview
     
     steps:
+      - name: Setup Google Cloud Authentication
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
       - name: Test preview service
         run: |
           sleep 30  # Wait for deployment to stabilize
@@ -214,8 +224,8 @@ jobs:
           # Get the service URL using gcloud
           SERVICE_URL=$(gcloud run services describe ${PREVIEW_NAME} \
             --platform managed \
-            --region us-central1 \
-            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
             --format 'value(status.url)')
           
           echo "Testing preview at: ${SERVICE_URL}"
