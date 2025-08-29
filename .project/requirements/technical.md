@@ -2,292 +2,282 @@
 
 ## Core Technology Stack
 
-### Frontend Framework
-- **React 19.0+**
-  - New hooks: `useOptimistic`, `useActionState`, `useFormStatus`, `use`
-  - Concurrent features and Suspense improvements
-  - Server Components compatibility (future-ready)
-  - Enhanced error boundaries and error handling
-  - Improved hydration and streaming SSR support
+### Backend Framework
+- **FastAPI 0.115.0**
+  - High-performance Python web framework
+  - Automatic API documentation with OpenAPI/Swagger
+  - Built-in data validation with Pydantic
+  - Async/await support for concurrent requests
+  - Type hints for better developer experience
 
-### Build System & Tooling
-- **Vite 7.0+**
-  - Requires Node.js 20.19+ or 22.12+
-  - Native ESM with rollup 4.x
-  - Lightning-fast HMR with instant updates
+### Backend Runtime
+- **Python 3.11**
+  - Latest stable Python version
+  - Performance improvements over 3.10
+  - Better error messages and debugging
+  - Type hint improvements
+
+- **Uvicorn 0.31.0**
+  - ASGI server for FastAPI
+  - Production-ready with --reload for development
+  - HTTP/1.1 and WebSocket support
+  - Configurable workers for scaling
+
+### Frontend Framework
+- **React 18.3.1**
+  - Latest stable React version
+  - Concurrent features and Suspense
+  - Automatic batching for better performance
+  - Strict mode for catching issues early
+
+### Frontend Build System
+- **Vite 7.1.3**
+  - Lightning-fast HMR (Hot Module Replacement)
+  - Native ESM support
+  - Optimized production builds
   - Built-in TypeScript support
-  - Optimized production builds with tree-shaking
+  - CSS modules and preprocessing
 
 ### Language & Type System
-- **TypeScript 5.8+**
+- **TypeScript 5.6.3**
   - Strict mode configuration
-  - Enhanced inference and performance
-  - Latest ECMAScript features support
-  - Bundler module resolution
-  - Path mapping and absolute imports
+  - Latest ECMAScript features
+  - Better inference and performance
+  - Path mapping for clean imports
 
-### Styling & Design System
-- **Tailwind CSS 4.0 Beta**
-  - Vite plugin integration (`@tailwindcss/vite`)
-  - No configuration file needed
-  - 5x faster builds than v3
-  - CSS-first approach with theme functions
-  - Built-in container queries and modern CSS features
+### Container Platform
+- **Docker**
+  - Multi-stage builds for optimization
+  - Platform-specific builds (linux/amd64)
+  - Layer caching for faster builds
+  - Security scanning with best practices
 
-### Testing Framework
-- **Vitest 3.2.x**
-  - Native ESM and TypeScript support
-  - 10x faster than Jest
-  - Built-in code coverage with v8
-  - Watch mode with intelligent re-runs
-  - Snapshot testing and mocking utilities
+### Cloud Platform
+- **Google Cloud Run**
+  - Serverless container deployment
+  - Automatic scaling (0 to N)
+  - Pay-per-use pricing model
+  - Built-in load balancing
+  - HTTPS by default
 
-- **React Testing Library 16.3.0**
-  - React 19 compatibility
-  - Accessibility-focused testing
-  - User-centric test patterns
-  - Integration with Vitest
+- **Artifact Registry**
+  - Container image storage
+  - Vulnerability scanning
+  - Integration with Cloud Run
+  - Multi-region replication support
 
-- **Playwright 1.50+**
-  - Cross-browser E2E testing
-  - Visual regression testing
-  - Performance monitoring
-  - Mobile device emulation
-  - CI/CD integration
+### CI/CD Platform
+- **GitHub Actions**
+  - Native GitHub integration
+  - Matrix builds for testing
+  - Secret management
+  - Artifact caching
+  - Parallel job execution
 
+## API Requirements
 
-### Development Tools
-- **ESLint 9.x** with flat config
-- **Prettier 3.x** for code formatting
+### RESTful Endpoints
+- **Health Check**: `/api/health`
+  - Returns service status
+  - Used by Cloud Run for container health
+  - No authentication required
 
-## Database Architecture
+- **Hello Endpoint**: `/api/hello`
+  - Demo endpoint returning JSON
+  - Shows frontend-backend integration
+  - CORS enabled for frontend access
 
-### Database Stack
-- **Database**: Cloudflare D1 (SQLite at the edge)
-- **SQL**: Direct SQL queries with prepared statements
-- **Migrations**: SQL migration files in `db/` directory
-- **Development**: Wrangler D1 commands for local development
+### CORS Configuration
+- Allow all origins in development
+- Configurable origins for production
+- Support for credentials
+- All HTTP methods allowed
+- Custom headers supported
 
-### Database Design Principles
-- **Portability First**: Use standard SQL features only
-- **Type Safety**: TypeScript interfaces for data models
-- **Migration Strategy**: Version-controlled SQL migration files
-- **Prepared Statements**: Use parameterized queries for security
-- **No Direct Queries**: Components never access database directly
-
-### Schema Example
-```sql
--- db/schema.sql
-CREATE TABLE IF NOT EXISTS todos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  text TEXT NOT NULL,
-  completed INTEGER DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-```
-
-### Data Access Pattern
-```typescript
-// worker/index.ts
-interface Todo {
-  id: number;
-  text: string;
-  completed: number;  // SQLite uses 0/1 for booleans
-  created_at: number;
-  updated_at: number;
-}
-
-// Example query with prepared statement
-const todo = await c.env.DB.prepare(
-  'SELECT * FROM todos WHERE id = ?'
-).bind(id).first<Todo>();
-```
-
-## Deployment Platform
-
-### Primary: Cloudflare Workers
-- **Runtime**: V8 isolates with Web API compatibility
-- **Performance**: <10ms cold starts, global edge deployment
-- **Scalability**: Auto-scaling to handle traffic spikes
-- **Database**: Cloudflare D1 (SQLite) with prepared statements
-- **Storage**: KV storage for cache, R2 for objects
-- **Cost**: Generous free tier, pay-per-request pricing
-
-### Platform Abstraction Layer
-- **Deployment Agnostic**: Works with Vercel, Netlify, AWS Lambda
-- **API Abstraction**: Platform-independent request/response handling
-- **Environment Variables**: Unified configuration across platforms
-- **Database Abstraction**: TypeScript interfaces for data models
-- **Portability**: Avoid platform-specific APIs, use standard SQL
-
-## Architecture Requirements
-
-### Project Structure
-```
-src/
-├── __tests__/          # Test files
-│   ├── unit/          # Unit tests
-│   └── integration/   # Integration tests
-├── lib/
-│   └── api/           # API client and types
-├── App.tsx            # Main application component
-├── main.tsx           # Application entry point
-└── index.css          # Global styles
-worker/                # Cloudflare Worker backend
-└── index.ts          # Worker entry point with API routes
-db/                    # Database files
-├── schema.sql        # Database schema
-├── seed.sql          # Seed data
-└── migrations/       # SQL migration files
-```
+## Frontend Requirements
 
 ### Component Architecture
-- **Composition over Inheritance**: Use React composition patterns
-- **Props Interface Design**: Clear, typed component APIs
-- **Accessibility First**: WCAG 2.1 AA compliance by default
-- **Performance Optimized**: Lazy loading and code splitting
-- **Testable Components**: Easy to unit test and mock
+- Functional components with hooks
+- TypeScript for all components
+- CSS modules for styling
+- Responsive design ready
 
-### State Management
-- **React Built-ins**: useState, useReducer, useContext
-- **Server State**: TanStack Query for API data caching
-- **Local Storage**: Custom hooks for persistence  
-- **URL State**: React Router v7 with type-safe navigation
+### API Integration
+- Environment-aware API URLs
+- Fetch API for HTTP requests
+- Error handling and fallbacks
+- Loading states
 
-## Performance Requirements
-
-### Build Performance
-- **Development Start**: Fast startup from npm run dev
-- **Hot Module Replacement**: Instant component updates
-- **Production Build**: Fast full builds
-- **Bundle Analysis**: Automated bundle size monitoring
-- **Tree Shaking**: Eliminate unused code automatically
-
-### Runtime Performance
-- **Initial Bundle**: Optimized bundle sizes
-- **Total Bundle**: Efficient loading of all features
-- **Core Web Vitals**: Optimized for Core Web Vitals
-- **Time to Interactive**: Fast interaction readiness
-
-### Optimization Strategies
-- **Code Splitting**: Route-based and feature-based lazy loading
-- **Image Optimization**: WebP/AVIF with responsive images
-- **Font Loading**: Efficient web font loading strategies
-- **Caching**: Service worker and HTTP caching
-- **Prefetching**: Intelligent resource prefetching
-
-## Security Requirements
-
-### Data Protection
-- **Input Validation**: Client and server-side validation
-- **SQL Injection Prevention**: Parameterized queries
-- **Data Encryption**: Sensitive data encryption at rest
-- **HTTPS Only**: Force HTTPS in production
-- **Security Headers**: Comprehensive security header configuration
-
-### Development Security
-- **Dependency Scanning**: Automated vulnerability scanning
-- **Secret Management**: Environment-based secret handling
-- **Code Analysis**: Static security analysis tools
-- **Audit Logging**: Security event logging
-- **Regular Updates**: Automated dependency updates
-
-## Browser Support
-
-### Modern Browser Targets
-- **Chrome**: 120+ (Primary testing target)
-- **Firefox**: 120+ (Should work, not actively tested)  
-- **Safari**: 17+ (Should work, not actively tested)
-- **Edge**: 120+ (Chromium-based, should work)
-
-### Feature Requirements
-- **ES2022 Support**: Native async/await, optional chaining, nullish coalescing
-- **Web APIs**: Fetch, Web Workers, Service Workers, Web Streams
-- **CSS Features**: CSS Grid, Flexbox, Custom Properties, Container Queries
-- **No IE Support**: Modern browsers only, no legacy polyfills
-
-## Development Environment
-
-### Required Software
-- **Node.js**: 20.19+ or 22.12+ (LTS recommended)
-- **npm**: 10+ or **pnpm**: 9+ (preferred for performance)
-- **Git**: 2.40+ with modern CLI features
-- **VS Code**: Latest with recommended extensions
-
-### System Requirements
-- **RAM**: 8GB minimum, 16GB recommended
-- **Storage**: 10GB free space for node_modules and builds
-- **OS**: macOS 12+, Ubuntu 20.04+, Windows 11
-- **Network**: Reliable internet for package downloads and deployments
-
-### VS Code Configuration
-```json
-{
-  "recommendations": [
-    "bradlc.vscode-tailwindcss",
-    "ms-vscode.vscode-typescript-next", 
-    "esbenp.prettier-vscode",
-    "dbaeumer.vscode-eslint",
-    "ms-playwright.playwright",
-    "vitest.explorer",
-    "ms-vscode.vscode-json"
-  ]
-}
-```
-
-## Quality Assurance
-
-### Code Quality Standards
-- **TypeScript Strict Mode**: No any types, strict null checks
-- **ESLint Configuration**: React + TypeScript rules
-- **Prettier Integration**: Automatic code formatting
-- **Import Organization**: Automatic import sorting and grouping
-
-### Testing Requirements
-- **Unit Test Coverage**: >85% line coverage
-- **Integration Tests**: >70% critical path coverage  
-- **E2E Tests**: 100% critical user journey coverage
-- **Performance Tests**: Core Web Vitals monitoring
-- **Accessibility Tests**: WCAG 2.1 AA compliance validation
-
-### Monitoring & Observability
-- **Error Tracking**: Comprehensive error reporting
-- **Performance Monitoring**: Real-time monitoring capabilities
-- **User Analytics**: Privacy-focused usage analytics
-- **Build Monitoring**: CI/CD pipeline health tracking
-- **Security Scanning**: Automated security vulnerability detection
-
-## Version Management
-
-### Package Management
-- **Lock Files**: Committed package-lock.json/pnpm-lock.yaml
-- **Security Updates**: Automated dependency vulnerability patching
-- **Version Pinning**: Exact versions for critical dependencies
-- **Peer Dependencies**: Explicit peer dependency management
-- **Bundle Analysis**: Regular bundle size monitoring
-
-### Release Management
-- **Semantic Versioning**: Conventional commit-based releases
-- **Automated Releases**: GitHub Actions-based release pipeline
-- **Changelog Generation**: Automated changelog from commits
-- **Migration Guides**: Version upgrade documentation
-- **Backward Compatibility**: Clear breaking change communication
+### Build Configuration
+- Production builds with minification
+- Code splitting ready
+- Source maps for debugging
+- Asset optimization
 
 ## Infrastructure Requirements
 
-### Development Infrastructure
-- **Local Development**: Vite dev server + Wrangler for backend
-- **Hot Reloading**: Sub-second development feedback
-- **Database Management**: Wrangler D1 commands for database operations
-- **Database Migrations**: SQL migration files in `db/` directory
-- **Environment Files**: `.env.local` (Vite) and `.dev.vars` (Wrangler)
+### Container Specifications
+- **Base Images**
+  - Python 3.11-slim for backend
+  - Node 20-slim for frontend build
+  
+- **Multi-stage Build**
+  - Stage 1: Frontend build
+  - Stage 2: Backend with static files
+  - Final image < 200MB
 
-### Production Infrastructure
-- **Global CDN**: Edge-deployed static assets
-- **Auto-scaling**: Automatic traffic-based scaling
-- **Health Monitoring**: Uptime and performance monitoring
-- **Error Tracking**: Real-time error reporting and alerting
-- **Backup Systems**: Automated backup and recovery procedures
+- **Platform Requirements**
+  - linux/amd64 architecture
+  - Port 8080 for Cloud Run
+  - Environment variable support
 
-This technical specification provides the foundation for building a modern, performant, and maintainable web application using 2025's best practices and technologies.
+### Deployment Configuration
+- **Cloud Run Settings**
+  - Memory: 512Mi minimum
+  - CPU: 1 vCPU
+  - Max instances: 10 (configurable)
+  - Min instances: 0 (scale to zero)
+  - Concurrency: 1000 requests
+
+- **Artifact Registry**
+  - Docker repository format
+  - Regional storage (us-central1)
+  - Automated vulnerability scanning
+  - Image versioning with Git SHA
+
+### Security Requirements
+- **Environment Variables**
+  - No hardcoded secrets
+  - `.env` files for local development
+  - GitHub secrets for CI/CD
+  - Cloud Run environment variables
+
+- **Network Security**
+  - HTTPS only in production
+  - CORS properly configured
+  - Security headers enabled
+  - Input validation on all endpoints
+
+## Development Requirements
+
+### Local Development
+- **Backend**: `uvicorn main:app --reload`
+  - Port 8000 by default
+  - Auto-reload on file changes
+  - Debug mode enabled
+
+- **Frontend**: `npm run dev`
+  - Port 5173 by default
+  - Vite dev server with HMR
+  - Proxy configuration for API
+
+### Make Commands
+- `make init`: Interactive setup
+- `make install`: Install dependencies
+- `make dev`: Run development servers
+- `make build`: Build Docker image
+- `make deploy`: Deploy to Cloud Run
+- `make test`: Run test suites
+- `make lint`: Code quality checks
+
+### Testing Requirements
+- **Frontend Testing**
+  - Vitest for unit tests
+  - React Testing Library
+  - Coverage reporting
+  
+- **Backend Testing**
+  - Pytest for Python tests
+  - Test client for API testing
+  - Coverage reporting
+
+### Code Quality
+- **Linting**
+  - ESLint for TypeScript/React
+  - Flake8 for Python
+  - Prettier for formatting
+
+- **Type Checking**
+  - TypeScript strict mode
+  - Python type hints
+  - Pre-commit validation
+
+## Performance Requirements
+
+### Response Times
+- **API Endpoints**: < 200ms p95
+- **Cold Start**: < 2 seconds
+- **Frontend Load**: < 3 seconds on 3G
+- **HMR Update**: < 100ms
+
+### Resource Limits
+- **Container Memory**: 512Mi - 2Gi
+- **Container CPU**: 1-2 vCPUs
+- **Image Size**: < 200MB
+- **Bundle Size**: < 500KB initial
+
+### Scalability
+- **Concurrent Requests**: 1000 per instance
+- **Auto-scaling**: 0-10 instances
+- **Geographic Distribution**: Multi-region ready
+- **CDN Integration**: Static assets cacheable
+
+## Monitoring Requirements
+
+### Logging
+- **Cloud Logging**: All container logs
+- **Structured Logging**: JSON format
+- **Log Levels**: INFO, WARNING, ERROR
+- **Request Logging**: HTTP access logs
+
+### Metrics
+- **Cloud Monitoring**: System metrics
+- **Custom Metrics**: Application-specific
+- **Alerting**: Threshold-based alerts
+- **Dashboards**: Grafana-compatible
+
+### Error Tracking
+- **Error Boundaries**: React error handling
+- **API Error Responses**: Consistent format
+- **Stack Traces**: Development only
+- **User-Friendly Messages**: Production
+
+## Browser Support
+
+### Supported Browsers
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
+
+### JavaScript Features
+- ES2020+ syntax
+- Async/await
+- Optional chaining
+- Nullish coalescing
+
+### CSS Features
+- CSS Grid
+- Flexbox
+- CSS Variables
+- Container queries ready
+
+## Compliance Requirements
+
+### Security Standards
+- OWASP Top 10 compliance
+- Security headers enabled
+- HTTPS enforcement
+- Input sanitization
+
+### Accessibility
+- WCAG 2.1 Level AA ready
+- Semantic HTML
+- ARIA labels where needed
+- Keyboard navigation support
+
+### Performance Standards
+- Core Web Vitals targets
+- Lighthouse score > 90
+- Accessibility score > 90
+- SEO score > 90

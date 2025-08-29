@@ -2,202 +2,151 @@
 
 ## Overview
 
-This document outlines our approach to local development using **native Wrangler development**. This strategy provides the fastest iteration cycles, simplest setup, and maintains full portability for future architecture changes.
+Simple local development setup for the Google Cloud Run starter pack with FastAPI backend and React frontend.
 
-## Core Philosophy
-
-**"Move at the speed of thinking"** - Our local development approach must support rapid iteration while maintaining consistency across the team and preserving our ability to change deployment platforms if needed.
-
-## Chosen Approach: Native Wrangler Development
-
-### Why Native Tools?
-
-1. **Runtime Reality**: Cloudflare Workers use V8 isolates, not containers. Wrangler v3 runs the exact same `workerd` runtime locally that runs in production.
-
-2. **Performance**: 
-   - 10x faster startup than containerized alternatives
-   - 60x faster hot reload
-   - Sub-second iteration cycles
-
-3. **Simplicity**: 
-   - Zero configuration required
-   - Direct access to Chrome DevTools
-   - No container boundaries to debug through
-
-4. **Portability Preserved**: 
-   - React + TypeScript code remains platform-agnostic
-   - Drizzle ORM abstraction ensures database portability
-   - Only the dev command changes if we switch platforms
-
-## Local Development Setup
-
-### Quick Start (< 5 minutes)
+## Quick Start
 
 ```bash
-# 1. Use correct Node version
-nvm use
+# Set up environment
+make init        # Interactive .env setup
 
-# 2. Install dependencies
-npm install
+# Install dependencies
+make install     # Installs both frontend and backend deps
 
-# 3. Start development servers
-npm run dev          # Frontend at localhost:5173
-wrangler dev         # Backend at localhost:8787
-npx drizzle-kit studio # Database GUI (optional)
+# Start development
+make dev-backend   # Terminal 1: FastAPI on :8000
+make dev-frontend  # Terminal 2: Vite on :5173
 ```
 
-### Ensuring Consistency
+## Development Setup
 
-#### Node Version Management
+### Prerequisites
+- Node.js 20+
+- Python 3.11+
+- Docker (for local container testing)
+- Make
 
-Create `.nvmrc` file:
+### Environment Configuration
+
+Create `.env` file (done by `make init`):
 ```bash
-echo "20.11.0" > .nvmrc
+GCP_PROJECT_ID=your-project-id
+GCP_REGION=us-central1
+SERVICE_NAME=hello-world-app
 ```
 
-Team members use:
+### Frontend Development
+
 ```bash
-nvm use    # Automatically uses version from .nvmrc
+cd frontend
+npm install         # Install dependencies
+npm run dev         # Start Vite dev server on :5173
+npm run build       # Build for production
+npm run lint        # Check code style
+npm run type-check  # Validate TypeScript
 ```
 
-#### Environment Variables
+**Features:**
+- Hot Module Replacement (HMR)
+- TypeScript support
+- Vite's fast bundling
+- API proxy to backend (configured in vite.config.ts)
 
-Frontend (`.env.local`):
+### Backend Development
+
 ```bash
-VITE_API_URL=http://localhost:8787
-VITE_AUTH0_DOMAIN=dev-tenant.auth0.com
+cd backend
+pip install -r requirements.txt  # Install dependencies
+uvicorn main:app --reload        # Start with hot reload on :8000
 ```
 
-Backend (`.dev.vars`):
+**Features:**
+- Auto-reload on file changes
+- FastAPI automatic API documentation at `/docs`
+- CORS configured for local development
+
+## Testing with Docker
+
 ```bash
-AUTH0_DOMAIN=dev-tenant.auth0.com
-AUTH0_API_AUDIENCE=https://api.example.com
-DATABASE_URL=file:./local.db
+# Build and run locally
+make test-local
+
+# Access at http://localhost:8080
 ```
 
-#### Database Management
+This builds the same container that deploys to Cloud Run, ensuring consistency.
 
-Local D1 database:
+## Development Commands
+
+### Make Commands
 ```bash
-# Create local database
-wrangler d1 create app-database --local
-
-# Run migrations
-wrangler d1 migrations apply app-database --local
-
-# Use Drizzle Studio for GUI
-npx drizzle-kit studio
+make help          # Show all available commands
+make install       # Install all dependencies
+make dev-frontend  # Start frontend dev server
+make dev-backend   # Start backend dev server
+make test-local    # Test with Docker locally
+make lint          # Run linters
+make format        # Format code
+make clean         # Clean build artifacts
 ```
 
-## Development Workflows
-
-### Standard Development
-
+### Direct Commands
 ```bash
-# Terminal 1: Frontend with HMR
-npm run dev
+# Frontend
+cd frontend && npm run dev
+cd frontend && npm run lint
+cd frontend && npm run type-check
 
-# Terminal 2: Backend with hot reload
-wrangler dev
+# Backend
+cd backend && uvicorn main:app --reload --port 8000
 
-# Terminal 3: Database GUI (optional)
-npx drizzle-kit studio
+# Docker
+docker build -t test-app .
+docker run -p 8080:8080 test-app
 ```
 
-### Remote Resource Access
+## API Development
 
-When you need production data:
+The backend serves two purposes:
+1. API endpoints under `/api/*`
+2. Static file serving for the React app in production
+
+**Current endpoints:**
+- `/api/health` - Health check
+- `/api/hello` - Demo endpoint
+
+## Common Issues
+
+### Port Already in Use
 ```bash
-# Connect to remote resources
-wrangler dev --remote
+# Kill process on port 8000
+lsof -i :8000
+kill -9 <PID>
 
-# Or mix local/remote in wrangler.toml
-experimental_remote: true
+# Or use different port
+uvicorn main:app --reload --port 8001
 ```
 
-### Testing Workflows
+### Frontend Can't Connect to Backend
+Check that:
+1. Backend is running on port 8000
+2. CORS is configured in `backend/main.py`
+3. Vite proxy is set in `frontend/vite.config.ts`
 
+### Docker Build Fails
 ```bash
-# Unit tests with Vitest
-npm run test
+# Clean Docker cache
+docker system prune -a
 
-# E2E tests with Playwright
-npm run test:e2e
-```
-
-## Comparison with Alternatives
-
-### Native Wrangler (Our Choice)
-- ✅ **Pros**: Fast iteration, simple setup, exact production runtime
-- ✅ **Cons**: Requires Node.js (mitigated by .nvmrc)
-- **Verdict**: Optimal for rapid development
-
-## Migration Flexibility
-
-If we need to change our approach:
-
-1. **Code remains unchanged**: React + TypeScript + Drizzle
-2. **Only npm scripts change**: Update package.json
-3. **Migration time**: < 1 hour
-4. **No architectural impact**: Deployment stays the same
-
-## Development Experience
-
-| Aspect | Native Wrangler |
-|--------|----------------|
-| Initial startup | Fast |
-| Hot reload | Instant |
-| Memory usage | Efficient |
-| Debug access | Direct |
-
-## Common Issues & Solutions
-
-### Issue: Node Version Mismatch
-**Solution**: Always run `nvm use` before starting
-
-### Issue: Port Conflicts
-**Solution**: 
-```bash
-# Kill process on port
-lsof -ti:8787 | xargs kill
-```
-
-### Issue: Database Connection
-**Solution**: Ensure D1 database is created locally
-```bash
-wrangler d1 create app-database --local
+# Rebuild
+make build
 ```
 
 ## Best Practices
 
-1. **Always use .nvmrc**: Ensures consistent Node version
-2. **Never commit .dev.vars**: Contains secrets
-3. **Use Drizzle Studio**: Visual database management
-4. **Leverage HMR**: Both frontend and backend support it
-5. **Test locally first**: Before deploying to preview
+1. **Always test with Docker before deploying** - Use `make test-local`
+2. **Run linters before committing** - Use `make lint`
+3. **Keep dependencies updated** - Regular `npm update` and `pip install --upgrade`
+4. **Use the Makefile** - Consistent commands across the team
 
-## AI Tool Compatibility
-
-Our setup works seamlessly with:
-- **Claude Code**: Standard tools it understands
-- **Cursor**: Full IntelliSense support
-- **GitHub Copilot**: Recognizes patterns
-- **VS Code**: Full debugging capabilities
-
-## Action Items for New Projects
-
-1. ✅ Add `.nvmrc` with Node 20.11.0
-2. ✅ Create `.dev.vars.example` template
-3. ✅ Document setup in README.md
-4. ✅ Optional: Add .devcontainer config
-5. ✅ Set up pre-commit hooks for consistency
-
-## Conclusion
-
-Native Wrangler development provides the optimal balance of:
-- **Speed**: Fastest possible iteration
-- **Simplicity**: Minimal setup complexity
-- **Flexibility**: Easy to change if needed
-- **Compatibility**: Works with all tools
-
-This approach aligns with our "move fast" philosophy while maintaining professional development standards.
+This approach keeps local development simple, fast, and consistent with production.

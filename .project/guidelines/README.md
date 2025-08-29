@@ -10,12 +10,12 @@ This directory contains all development guidelines, standards, and best practice
 
 ### Development
 - **[development-workflow.md](development/development-workflow.md)** - Git workflow, environment setup, and development process
-- **[local-development.md](development/local-development.md)** - Local development strategy using native Wrangler
-- **[deployment-strategy.md](development/deployment-strategy.md)** - Cloudflare Workers deployment and platform abstraction
+- **[local-development.md](development/local-development.md)** - Local development strategy using Docker and Make
+- **[deployment-strategy.md](development/deployment-strategy.md)** - Google Cloud Run deployment and CI/CD strategy
 
 ### Language Standards
 - **[typescript-standards.md](languages/typescript-standards.md)** - TypeScript coding standards and patterns
-- **[react-standards.md](languages/react-standards.md)** - React 19 component patterns and best practices  
+- **[react-standards.md](languages/react-standards.md)** - React component patterns and best practices  
 - **[python-standards.md](languages/python-standards.md)** - Python/FastAPI backend standards
 
 ### Testing & Quality
@@ -37,24 +37,31 @@ See [ai-behavior.md](core/ai-behavior.md) for complete list of critical rules an
 ### Development Commands
 ```bash
 # Setup
-nvm use               # Use correct Node version
-npm install          # Install dependencies
+make init           # Interactive setup with .env configuration
+make install        # Install all dependencies
 
 # Development
-npm run dev          # Start frontend
-wrangler dev         # Start backend
-npm test            # Run tests
+make dev-frontend   # Start frontend (port 5173)
+make dev-backend    # Start backend (port 8000)
+make test-local     # Test with Docker locally
+
+# Deployment
+make build          # Build Docker image
+make deploy         # Deploy to Google Cloud Run
+make logs           # View Cloud Run logs
 
 # Quality
-npm run lint        # Check code style
-npm run type-check  # TypeScript validation
+make lint           # Check both frontend and backend code style
+make format         # Format both frontend and backend code
+cd frontend && npm run lint        # Check frontend only
+cd frontend && npm run type-check  # TypeScript validation
 npm run test:e2e    # End-to-end tests
 ```
 
 ### Technology Stack
-- **Frontend**: React 19, TypeScript 5.8, Vite 7, Tailwind CSS 4
-- **Backend**: Cloudflare Workers, D1 Database  
-- **Testing**: Vitest 3, Playwright, React Testing Library 16
+- **Frontend**: React 19, TypeScript 5.8, Vite 7
+- **Backend**: FastAPI (Python 3.11), Google Cloud Run
+- **Testing**: Vitest, Playwright (when configured)
 
 ## File Organization Notes
 

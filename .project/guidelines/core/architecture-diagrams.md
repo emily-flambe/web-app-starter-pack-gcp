@@ -10,23 +10,29 @@ graph TB
         React[React App<br/>TypeScript + Vite]
     end
     
-    subgraph "Cloudflare Edge Network"
-        Worker[Worker API<br/>Hono Framework]
-        D1[(D1 Database<br/>SQLite)]
+    subgraph "Google Cloud Platform"
+        subgraph "Cloud Run"
+            Container[FastAPI Container<br/>Python 3.11]
+            Static[Static Files<br/>React Build]
+        end
+        Registry[(Artifact Registry<br/>Docker Images)]
+        Logging[Cloud Logging<br/>& Monitoring]
     end
     
     subgraph "Development Environment"
         Dev1[Vite Dev Server<br/>:5173]
-        Dev2[Wrangler Dev<br/>:8787]
-        Dev3[Local D1<br/>SQLite]
+        Dev2[Uvicorn Server<br/>:8000]
+        Docker[Docker<br/>Local Container]
     end
     
-    React -->|HTTP/REST| Worker
-    Worker -->|SQL| D1
+    React -->|HTTPS/REST| Container
+    Container --> Static
+    Container --> Registry
+    Container --> Logging
     
     Dev1 -.->|Development| React
-    Dev2 -.->|Development| Worker
-    Dev3 -.->|Development| D1
+    Dev2 -.->|Development| Container
+    Docker -.->|Test Build| Container
 ```
 
 ## Request Flow
@@ -34,293 +40,285 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant User
-    participant React as React App
-    participant API as API Client
-    participant Worker as Worker API
-    participant D1 as D1 Database
+    participant Browser as Browser
+    participant CloudRun as Cloud Run LB
+    participant Container as FastAPI Container
+    participant Static as Static Files
     
-    User->>React: Interact with UI
-    React->>API: Call API method
-    API->>Worker: HTTP Request
-    Worker->>D1: SQL Query
-    D1-->>Worker: Result Set
-    Worker-->>API: JSON Response
-    API-->>React: Typed Data
-    React-->>User: Update UI
+    User->>Browser: Navigate to app
+    Browser->>CloudRun: HTTPS Request
+    CloudRun->>Container: Route Request
+    
+    alt API Request (/api/*)
+        Container->>Container: Process API Request
+        Container-->>CloudRun: JSON Response
+    else Static Request
+        Container->>Static: Serve React App
+        Static-->>CloudRun: HTML/JS/CSS
+    end
+    
+    CloudRun-->>Browser: Response
+    Browser-->>User: Render UI
 ```
 
-## Directory Structure
-
-```mermaid
-graph TD
-    Root[web-app-starter-pack/]
-    
-    Root --> Src[src/<br/>Frontend Application]
-    Root --> Worker[worker/<br/>Backend API]
-    Root --> DB[db/<br/>Database Schema]
-    Root --> Public[public/<br/>Static Assets]
-    Root --> E2E[e2e/<br/>End-to-End Tests]
-    Root --> Project[.project/<br/>Documentation]
-    
-    Src --> Components[Components]
-    Src --> Lib[lib/api/<br/>API Client]
-    Src --> App[App.tsx<br/>Main Application]
-    
-    Worker --> Index[index.ts<br/>API Routes]
-    
-    DB --> Schema[schema.sql]
-    DB --> Seed[seed.sql]
-    
-    Project --> Guidelines[guidelines/]
-    Guidelines --> Core[core/]
-    Guidelines --> Dev[development/]
-    Guidelines --> Lang[languages/]
-```
-
-## Build & Deployment Pipeline
+## Deployment Pipeline
 
 ```mermaid
 graph LR
     subgraph "Development"
         Code[Source Code]
-        Local[Local Testing]
+        Git[Git Push]
     end
     
-    subgraph "Build Process"
-        Vite[Vite Build<br/>Frontend Bundle]
-        Wrangler[Wrangler Build<br/>Worker Bundle]
+    subgraph "GitHub Actions"
+        Build[Docker Build<br/>Multi-stage]
+        Test[Run Tests<br/>Lint & Type Check]
+        Push[Push to Registry]
     end
     
-    subgraph "Deployment"
-        CF[Cloudflare Workers<br/>Global Edge Network]
-        D1P[(Production D1)]
+    subgraph "Google Cloud"
+        Registry[Artifact Registry<br/>Container Images]
+        Deploy[Cloud Run Deploy]
+        Service[Cloud Run Service<br/>Auto-scaling]
     end
     
-    Code -->|npm run dev| Local
-    Code -->|npm run build| Vite
-    Code -->|wrangler deploy| Wrangler
-    Vite --> CF
-    Wrangler --> CF
-    CF --> D1P
+    Code --> Git
+    Git -->|main branch| Build
+    Git -->|PR| Test
+    Build --> Test
+    Test --> Push
+    Push --> Registry
+    Registry --> Deploy
+    Deploy --> Service
 ```
 
-## API Architecture
+## Container Architecture
 
 ```mermaid
 graph TB
-    subgraph "Frontend Layer"
-        UI[React Components]
-        Client[API Client<br/>src/lib/api/client.ts]
+    subgraph "Multi-Stage Docker Build"
+        subgraph "Stage 1: Frontend Build"
+            Node[Node 20-slim]
+            NPM[npm install]
+            ViteBuild[Vite Build]
+            Dist[dist/ folder]
+        end
+        
+        subgraph "Stage 2: Runtime"
+            Python[Python 3.11-slim]
+            Pip[pip install]
+            FastAPI[FastAPI App]
+            StaticFiles[Static Files<br/>from Stage 1]
+            Uvicorn[Uvicorn Server]
+        end
     end
     
-    subgraph "API Layer"
-        Routes[API Routes<br/>worker/index.ts]
-        Handlers[Request Handlers]
-        Validation[Input Validation]
-    end
-    
-    subgraph "Data Layer"
-        SQL[SQL Queries]
-        D1[(D1 Database)]
-        Schema[Database Schema]
-    end
-    
-    UI --> Client
-    Client -->|HTTP/JSON| Routes
-    Routes --> Handlers
-    Handlers --> Validation
-    Validation --> SQL
-    SQL --> D1
-    D1 --> Schema
+    Node --> NPM
+    NPM --> ViteBuild
+    ViteBuild --> Dist
+    Dist --> StaticFiles
+    Python --> Pip
+    Pip --> FastAPI
+    FastAPI --> StaticFiles
+    FastAPI --> Uvicorn
 ```
 
-## Development Workflow
+## CI/CD Workflow
 
 ```mermaid
-graph TD
-    Start([Developer Starts])
-    
-    Start --> Setup{First Time?}
-    Setup -->|Yes| Install[make setup<br/>Install & Configure]
-    Setup -->|No| Dev[make dev<br/>Start Servers]
-    
-    Install --> Dev
-    Dev --> Code[Write Code]
-    
-    Code --> Test{Test Type?}
-    Test -->|Unit| Jest[npm run test]
-    Test -->|E2E| Play[npm run test:e2e]
-    Test -->|Manual| Browser[Browser Testing]
-    
-    Jest --> Commit
-    Play --> Commit
-    Browser --> Commit
-    
-    Commit[Git Commit]
-    Commit --> CI[GitHub Actions<br/>CI/CD Pipeline]
-    CI --> Deploy[make deploy<br/>Production]
-```
-
-## Technology Stack Layers
-
-```mermaid
-graph BT
-    subgraph "Infrastructure"
-        CF[Cloudflare Workers]
-        D1[D1 Database]
-        Edge[Edge Network]
+graph TB
+    subgraph "GitHub Repository"
+        PR[Pull Request]
+        Main[Main Branch]
     end
     
-    subgraph "Backend"
-        Hono[Hono Framework]
-        SQL[Raw SQL]
-        CORS[CORS Middleware]
+    subgraph "GitHub Actions Jobs"
+        BuildJob[Build Docker Image]
+        DeployJob[Deploy to Cloud Run]
+        TestJob[Tests & Validation]
+        SmokeTest[Smoke Test]
+        Cleanup[Cleanup PR Preview]
     end
     
-    subgraph "Frontend"
-        React[React 18]
-        TS[TypeScript]
-        Vite[Vite]
-        TW[Tailwind CSS]
+    subgraph "Deployment Targets"
+        Preview[PR Preview<br/>hello-world-pr-N]
+        Production[Production<br/>hello-world-app]
     end
     
-    subgraph "Tooling"
-        Jest[Jest Testing]
-        PW[Playwright E2E]
-        GH[GitHub Actions]
-    end
+    PR --> BuildJob
+    PR --> TestJob
+    PR --> DeployJob
+    DeployJob -->|PR| Preview
     
-    D1 --> SQL
-    CF --> Hono
-    Hono --> CORS
-    Edge --> CF
+    Main --> BuildJob
+    Main --> TestJob
+    Main --> DeployJob
+    DeployJob -->|Main| Production
     
-    React --> TS
-    TS --> Vite
-    Vite --> TW
-    
-    Jest --> React
-    PW --> Edge
-    GH --> CF
-```
-
-## Data Flow Pattern
-
-```mermaid
-stateDiagram-v2
-    [*] --> UserAction: User Interaction
-    UserAction --> ReactState: Update Local State
-    ReactState --> APICall: Trigger API Call
-    APICall --> WorkerReceive: HTTP Request
-    
-    WorkerReceive --> Validate: Input Validation
-    Validate --> QueryDB: Execute SQL
-    QueryDB --> Transform: Process Results
-    Transform --> Response: JSON Response
-    
-    Response --> ClientReceive: Handle Response
-    ClientReceive --> UpdateUI: Update React State
-    UpdateUI --> [*]: Render Changes
-    
-    Validate --> ErrorResponse: Validation Error
-    QueryDB --> ErrorResponse: Database Error
-    ErrorResponse --> ClientError: Error Handling
-    ClientError --> ShowError: Display Error
-    ShowError --> [*]
+    DeployJob --> SmokeTest
+    PR -->|closed| Cleanup
+    Cleanup --> Preview
 ```
 
 ## Environment Configuration
 
 ```mermaid
 graph LR
-    subgraph "Environment Files"
-        ENV[.env.local<br/>Frontend Config]
-        VARS[.dev.vars<br/>Worker Secrets]
-        WRANGLER[wrangler.toml<br/>Worker Config]
+    subgraph "Local Development"
+        ENV[.env file]
+        MakeInit[make init<br/>Interactive Setup]
     end
     
-    subgraph "Development"
-        ViteDev[Vite Dev Server]
-        WranglerDev[Wrangler Dev]
+    subgraph "CI/CD Pipeline"
+        Secrets[GitHub Secrets]
+        ServiceAccount[GCP Service Account]
     end
     
     subgraph "Production"
-        Build[Built Assets]
-        Worker[Worker Runtime]
-        Secrets[CF Secrets]
+        CloudRunEnv[Cloud Run<br/>Environment Variables]
+        Runtime[Runtime Configuration]
     end
     
-    ENV -->|VITE_* vars| ViteDev
-    VARS -->|Secrets| WranglerDev
-    WRANGLER -->|Config| WranglerDev
-    
-    ENV -->|Build Time| Build
-    WRANGLER -->|Deploy| Worker
-    Secrets -->|Runtime| Worker
+    MakeInit --> ENV
+    ENV -->|Development| Runtime
+    Secrets --> ServiceAccount
+    ServiceAccount -->|Deploy| CloudRunEnv
+    CloudRunEnv --> Runtime
 ```
 
-## Security Boundaries
+## API Architecture
 
 ```mermaid
 graph TB
-    subgraph "Public Zone"
-        Browser[Client Browser]
-        Static[Static Assets<br/>JS/CSS/Images]
+    subgraph "FastAPI Application"
+        Main[main.py]
+        
+        subgraph "Middleware"
+            CORS[CORS Middleware]
+            ErrorHandler[Error Handling]
+        end
+        
+        subgraph "API Routes"
+            Health[/api/health]
+            Hello[/api/hello]
+            Future[Future Endpoints...]
+        end
+        
+        subgraph "Static Serving"
+            CatchAll[/* Catch-all Route]
+            ReactApp[React SPA]
+        end
     end
     
-    subgraph "Edge Zone"
-        Worker[Worker API]
-        Auth[Authentication<br/>Future]
-        Validation[Input Validation]
-    end
-    
-    subgraph "Data Zone"
-        D1[(D1 Database)]
-        Secrets[Environment Secrets]
-    end
-    
-    Browser -->|HTTPS| Worker
-    Static -->|CDN| Browser
-    Worker --> Auth
-    Auth --> Validation
-    Validation -->|Prepared Statements| D1
-    Worker -.->|Secure Access| Secrets
-    
-    style Auth stroke-dasharray: 5 5
+    Main --> CORS
+    Main --> ErrorHandler
+    Main --> Health
+    Main --> Hello
+    Main --> Future
+    Main --> CatchAll
+    CatchAll --> ReactApp
 ```
 
-## Testing Architecture
+## Scaling Architecture
 
 ```mermaid
-graph TD
-    subgraph "Test Types"
-        Unit[Unit Tests<br/>Jest + RTL]
-        Integration[Integration Tests<br/>API Testing]
-        E2E[E2E Tests<br/>Playwright]
+graph TB
+    subgraph "Cloud Run Auto-scaling"
+        LB[Load Balancer]
+        
+        subgraph "Container Instances"
+            I1[Instance 1<br/>512Mi RAM]
+            I2[Instance 2<br/>512Mi RAM]
+            IN[Instance N<br/>512Mi RAM]
+        end
+        
+        Metrics[Scaling Metrics<br/>CPU, Concurrency]
     end
     
-    subgraph "Test Targets"
-        Components[React Components]
-        Client[API Client]
-        Routes[API Routes]
-        Flow[User Flows]
-    end
+    LB -->|Route| I1
+    LB -->|Route| I2
+    LB -->|Route| IN
     
-    subgraph "Test Environments"
-        Local[Local Development]
-        CI[GitHub Actions]
-        Preview[Preview Deployments]
-    end
+    Metrics -->|Scale Up| IN
+    Metrics -->|Scale Down| I1
     
-    Unit --> Components
-    Unit --> Client
-    Integration --> Routes
-    E2E --> Flow
-    
-    Local --> Unit
-    Local --> E2E
-    CI --> Unit
-    CI --> Integration
-    CI --> E2E
-    Preview --> E2E
+    style I2 stroke-dasharray: 5 5
+    style IN stroke-dasharray: 5 5
 ```
+
+## Development Workflow
+
+```mermaid
+graph LR
+    subgraph "Frontend Development"
+        Edit1[Edit React Code]
+        HMR[Vite HMR<br/>Hot Reload]
+        Browser1[Browser<br/>:5173]
+    end
+    
+    subgraph "Backend Development"
+        Edit2[Edit Python Code]
+        Reload[Uvicorn<br/>Auto-reload]
+        API[API<br/>:8000]
+    end
+    
+    subgraph "Integration Testing"
+        Docker[Docker Build]
+        Local[Local Container<br/>:8080]
+    end
+    
+    Edit1 --> HMR
+    HMR --> Browser1
+    
+    Edit2 --> Reload
+    Reload --> API
+    
+    Browser1 -->|Proxy| API
+    
+    Edit1 --> Docker
+    Edit2 --> Docker
+    Docker --> Local
+```
+
+## Security Layers
+
+```mermaid
+graph TB
+    subgraph "Security Architecture"
+        subgraph "Network Layer"
+            HTTPS[HTTPS Only]
+            CloudArmor[Cloud Armor<br/>DDoS Protection]
+        end
+        
+        subgraph "Application Layer"
+            CORSConfig[CORS Configuration]
+            InputVal[Input Validation]
+            Headers[Security Headers]
+        end
+        
+        subgraph "Container Layer"
+            MinimalImage[Minimal Base Image]
+            NonRoot[Non-root User]
+            ReadOnly[Read-only Filesystem]
+        end
+        
+        subgraph "Cloud Layer"
+            IAM[IAM Roles]
+            ServiceAcct[Service Accounts]
+            Secrets[Secret Manager]
+        end
+    end
+    
+    HTTPS --> CloudArmor
+    CloudArmor --> CORSConfig
+    CORSConfig --> InputVal
+    InputVal --> Headers
+    Headers --> MinimalImage
+    MinimalImage --> NonRoot
+    NonRoot --> ReadOnly
+    ReadOnly --> IAM
+    IAM --> ServiceAcct
+    ServiceAcct --> Secrets
+```
+
+These diagrams provide a comprehensive visual overview of the Google Cloud Run architecture, showing the complete system from development through deployment and production operation.
