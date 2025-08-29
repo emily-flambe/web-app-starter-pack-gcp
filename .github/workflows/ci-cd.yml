@@ -1,0 +1,24 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+jobs:
+  # Dummy job to establish workflow
+  placeholder:
+    name: Placeholder Job
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Placeholder step
+        run: |
+          echo "This is a placeholder workflow"
+          echo "It will be replaced with the full CI/CD pipeline in PR #5"
+          echo "This exists to enable GitHub Actions for pull requests"
