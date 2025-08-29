@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches: [main]
 
 env:
@@ -18,6 +19,7 @@ jobs:
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
     
     steps:
       - name: Checkout code
@@ -31,29 +33,47 @@ jobs:
           docker build --platform linux/amd64 -t test-build .
           echo "✅ Docker image built successfully"
 
-  # Second: Deploy to Cloud Run (only on main branch)
+  # Second: Deploy (either to production or preview based on context)
   deploy:
     name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     needs: build
-    # Only run on main branch, not on PRs
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event.action != 'closed'
     
     permissions:
       contents: read
-      id-token: write  # For Workload Identity Federation
+      id-token: write
+      pull-requests: write  # To comment on PR
+
+    outputs:
+      service_url: ${{ steps.deploy.outputs.service_url }}
+      service_name: ${{ steps.service-name.outputs.service_name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine deployment target
+        id: service-name
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Preview deployment for PR
+            SERVICE_NAME="hello-world-pr-${{ github.event.pull_request.number }}"
+            DEPLOYMENT_TYPE="preview"
+          else
+            # Production deployment for main branch
+            SERVICE_NAME="${{ env.SERVICE_NAME }}"
+            DEPLOYMENT_TYPE="production"
+          fi
+          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
+          echo "deployment_type=${DEPLOYMENT_TYPE}" >> $GITHUB_OUTPUT
+          echo "🎯 Deployment type: ${DEPLOYMENT_TYPE}" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Service name: ${SERVICE_NAME}" >> $GITHUB_STEP_SUMMARY
+
       - name: Setup Google Cloud Authentication
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-          # Alternative: Use Workload Identity Federation (more secure)
-          # workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          # service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Setup Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -66,7 +86,7 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}"
+          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ steps.service-name.outputs.service_name }}"
           
           # Build with cache and proper platform
           docker build \
@@ -83,20 +103,30 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ steps.service-name.outputs.service_name }}:${{ github.sha }}"
           
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
+          # Set appropriate resource limits based on deployment type
+          if [[ "${{ steps.service-name.outputs.deployment_type }}" == "preview" ]]; then
+            MAX_INSTANCES=2
+            LABELS="environment=preview,pr=${{ github.event.pull_request.number }}"
+          else
+            MAX_INSTANCES=10
+            LABELS="environment=production"
+          fi
+          
+          gcloud run deploy ${{ steps.service-name.outputs.service_name }} \
             --image ${IMAGE_URL} \
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
             --port 8080 \
             --memory 512Mi \
-            --max-instances 10 \
+            --max-instances ${MAX_INSTANCES} \
+            --labels ${LABELS} \
             --project ${{ env.PROJECT_ID }}
           
           # Get the service URL
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          SERVICE_URL=$(gcloud run services describe ${{ steps.service-name.outputs.service_name }} \
             --platform managed \
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }} \
@@ -104,13 +134,60 @@ jobs:
           
           echo "service_url=${SERVICE_URL}" >> $GITHUB_OUTPUT
           echo "🚀 Deployed to: ${SERVICE_URL}" >> $GITHUB_STEP_SUMMARY
-          echo "📦 Image: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.service_url }}';
+            const body = `🚀 **Preview Environment Ready!**
+            
+            Your changes have been deployed to: ${url}
+            
+            This preview will be automatically cleaned up when the PR is closed.
+            
+            | Details | |
+            |---------|---------|
+            | Preview URL | ${url} |
+            | Commit | \`${{ github.event.pull_request.head.sha }}\` |
+            | Service | \`${{ steps.service-name.outputs.service_name }}\` |
+            `;
+            
+            // Find and update existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Preview Environment Ready')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
 
   # Third: Run all tests and checks
   test-and-validate:
     name: Tests and Validation
     runs-on: ubuntu-latest
     needs: build
+    if: github.event.action != 'closed'
     
     steps:
       - name: Checkout code
@@ -172,37 +249,66 @@ jobs:
           cd backend
           python -m pytest -v 2>/dev/null || echo "No tests found yet - that's OK for now"
 
-      - name: Production smoke test (if deployed)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Smoke test deployment
+        needs: deploy
+        if: always() && needs.deploy.result == 'success'
         run: |
           # Wait for deployment to stabilize
           sleep 30
           
-          # Get service URL
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
-            --platform managed \
-            --region ${{ env.REGION }} \
-            --project ${{ env.PROJECT_ID }} \
-            --format 'value(status.url)' 2>/dev/null || echo "")
+          SERVICE_URL="${{ needs.deploy.outputs.service_url }}"
           
           if [ -n "$SERVICE_URL" ]; then
             # Test health endpoint
             curl -f ${SERVICE_URL}/api/health || exit 1
-            echo "✅ Production health check passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Health check passed for $SERVICE_URL" >> $GITHUB_STEP_SUMMARY
             
             # Test main endpoint
             curl -f ${SERVICE_URL}/api/hello || exit 1
-            echo "✅ Production API check passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ API check passed for $SERVICE_URL" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Skipping production tests (not deployed)" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No service URL available for testing" >> $GITHUB_STEP_SUMMARY
           fi
 
-  # Fourth: Final CI status check (required for PR merge)
+  # Fourth: Clean up preview on PR close
+  cleanup-preview:
+    name: Cleanup PR Preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Setup Google Cloud Authentication
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Delete preview service
+        run: |
+          PREVIEW_NAME="hello-world-pr-${{ github.event.pull_request.number }}"
+          
+          gcloud run services delete ${PREVIEW_NAME} \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }} \
+            --quiet || echo "Service already deleted or doesn't exist"
+          
+          echo "🧹 Cleaned up preview environment: ${PREVIEW_NAME}" >> $GITHUB_STEP_SUMMARY
+
+  # Fifth: Final CI status check (required for PR merge)
   ci-status:
     name: CI Status Check
     runs-on: ubuntu-latest
-    needs: [build, test-and-validate]
-    if: always()
+    needs: [build, deploy, test-and-validate]
+    if: always() && github.event.action != 'closed'
     
     steps:
       - name: Check all job statuses
@@ -210,6 +316,11 @@ jobs:
           # This job succeeds only if all required jobs succeed
           if [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "❌ Build failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.deploy.result }}" != "success" ]]; then
+            echo "❌ Deploy failed"
             exit 1
           fi
           
@@ -222,5 +333,6 @@ jobs:
           echo "## CI Status: ✅ PASSED" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Build: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Deploy: ✅" >> $GITHUB_STEP_SUMMARY
           echo "- Tests: ✅" >> $GITHUB_STEP_SUMMARY
           echo "- Validation: ✅" >> $GITHUB_STEP_SUMMARY
