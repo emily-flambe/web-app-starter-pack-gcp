@@ -5,9 +5,9 @@
 export
 
 # Configuration (can be overridden by .env or command line)
-PROJECT_ID ?= $(or $(GOOGLE_PROJECT_ID),your-project-id)
-REGION ?= $(or $(GOOGLE_REGION),us-central1)
-SERVICE_NAME ?= $(or $(GOOGLE_SERVICE_NAME),hello-world-app)
+PROJECT_ID ?= $(or $(GCP_PROJECT_ID),your-project-id)
+REGION ?= $(or $(GCP_REGION),us-central1)
+SERVICE_NAME ?= $(or $(GCP_SERVICE_NAME),hello-world-app)
 # Use Artifact Registry instead of Container Registry (deprecated March 2025)
 ARTIFACT_REGISTRY_LOCATION ?= us-central1
 ARTIFACT_REGISTRY_REPO ?= cloud-run-apps
@@ -30,7 +30,7 @@ check-project: ## Check if PROJECT_ID is set
 	@if [ "$(PROJECT_ID)" = "your-project-id" ]; then \
 		echo "$(RED)Error: PROJECT_ID not set$(NC)"; \
 		echo "Please either:"; \
-		echo "  1. Copy .env.example to .env and set GOOGLE_PROJECT_ID"; \
+		echo "  1. Copy .env.example to .env and set GCP_PROJECT_ID"; \
 		echo "  2. Or run: make deploy PROJECT_ID=your-actual-project-id"; \
 		exit 1; \
 	fi
@@ -65,9 +65,9 @@ init: ## Initialize project - interactively create .env file
 	echo ""; \
 	echo "$(GREEN)Creating .env file...$(NC)"; \
 	echo "# Google Cloud Configuration" > .env; \
-	echo "GOOGLE_PROJECT_ID=$$project_id" >> .env; \
-	echo "GOOGLE_REGION=$$region" >> .env; \
-	echo "GOOGLE_SERVICE_NAME=$$service_name" >> .env; \
+	echo "GCP_PROJECT_ID=$$project_id" >> .env; \
+	echo "GCP_REGION=$$region" >> .env; \
+	echo "GCP_SERVICE_NAME=$$service_name" >> .env; \
 	echo "" >> .env; \
 	echo "# Artifact Registry Configuration" >> .env; \
 	echo "ARTIFACT_REGISTRY_LOCATION=$$ar_location" >> .env; \
