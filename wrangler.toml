@@ -1,0 +1,28 @@
+name = "web-app-starter-pack"
+compatibility_date = "2025-08-15"
+main = "worker/index.ts"
+
+# Development server configuration
+[dev]
+port = 8787  # Fixed port for predictable local development
+
+# Serve the frontend build as static assets
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+# Production bindings
+[[d1_databases]]
+binding = "DB"
+database_name = "web-app-starter-pack-db"
+database_id = "6c31a2e4-6dd6-4fec-84ca-290dc9d97c9e"
+
+# Optional: KV namespace for caching
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "production_kv_id"
+
+# Optional: R2 bucket for file storage
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "your-bucket-name"

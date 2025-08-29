@@ -1,0 +1,3 @@
+# This folder is for static assets that should be served as-is
+# Examples: favicon.ico, manifest.json, images, fonts
+# Files here are available at the root path (e.g., /favicon.ico)
