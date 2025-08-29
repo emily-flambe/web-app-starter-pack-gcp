@@ -1,21 +1,18 @@
-name: CI/CD Pipeline
+name: PR Validation & Preview
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches: [main]
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  SERVICE_NAME: hello-world-app
   REGION: us-central1
   ARTIFACT_REGISTRY_LOCATION: us-central1
   ARTIFACT_REGISTRY_REPO: cloud-run-apps
 
 jobs:
-  # First: Build Docker image (always runs)
+  # First: Build Docker image
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -33,9 +30,9 @@ jobs:
           docker build --platform linux/amd64 -t test-build .
           echo "✅ Docker image built successfully"
 
-  # Second: Deploy (either to production or preview based on context)
+  # Second: Deploy preview environment
   deploy:
-    name: Deploy to Cloud Run
+    name: Deploy Preview Environment
     runs-on: ubuntu-latest
     needs: build
     if: github.event.action != 'closed'
@@ -43,32 +40,15 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      pull-requests: write  # To comment on PR
+      pull-requests: write
 
     outputs:
       service_url: ${{ steps.deploy.outputs.service_url }}
-      service_name: ${{ steps.service-name.outputs.service_name }}
+      service_name: ${{ steps.deploy.outputs.service_name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Determine deployment target
-        id: service-name
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # Preview deployment for PR
-            SERVICE_NAME="hello-world-pr-${{ github.event.pull_request.number }}"
-            DEPLOYMENT_TYPE="preview"
-          else
-            # Production deployment for main branch
-            SERVICE_NAME="${{ env.SERVICE_NAME }}"
-            DEPLOYMENT_TYPE="production"
-          fi
-          echo "service_name=${SERVICE_NAME}" >> $GITHUB_OUTPUT
-          echo "deployment_type=${DEPLOYMENT_TYPE}" >> $GITHUB_OUTPUT
-          echo "🎯 Deployment type: ${DEPLOYMENT_TYPE}" >> $GITHUB_STEP_SUMMARY
-          echo "📦 Service name: ${SERVICE_NAME}" >> $GITHUB_STEP_SUMMARY
 
       - name: Setup Google Cloud Authentication
         uses: google-github-actions/auth@v2
@@ -86,7 +66,8 @@ jobs:
 
       - name: Build and Push Docker image
         run: |
-          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ steps.service-name.outputs.service_name }}"
+          PREVIEW_NAME="hello-world-pr-${{ github.event.pull_request.number }}"
+          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${PREVIEW_NAME}"
           
           # Build with cache and proper platform
           docker build \
@@ -103,40 +84,32 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ steps.service-name.outputs.service_name }}:${{ github.sha }}"
+          PREVIEW_NAME="hello-world-pr-${{ github.event.pull_request.number }}"
+          IMAGE_URL="${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${PREVIEW_NAME}:${{ github.sha }}"
           
-          # Set appropriate resource limits based on deployment type
-          if [[ "${{ steps.service-name.outputs.deployment_type }}" == "preview" ]]; then
-            MAX_INSTANCES=2
-            LABELS="environment=preview,pr=${{ github.event.pull_request.number }}"
-          else
-            MAX_INSTANCES=10
-            LABELS="environment=production"
-          fi
-          
-          gcloud run deploy ${{ steps.service-name.outputs.service_name }} \
+          gcloud run deploy ${PREVIEW_NAME} \
             --image ${IMAGE_URL} \
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
             --port 8080 \
             --memory 512Mi \
-            --max-instances ${MAX_INSTANCES} \
-            --labels ${LABELS} \
+            --max-instances 2 \
+            --labels "environment=preview,pr=${{ github.event.pull_request.number }}" \
             --project ${{ env.PROJECT_ID }}
           
           # Get the service URL
-          SERVICE_URL=$(gcloud run services describe ${{ steps.service-name.outputs.service_name }} \
+          SERVICE_URL=$(gcloud run services describe ${PREVIEW_NAME} \
             --platform managed \
             --region ${{ env.REGION }} \
             --project ${{ env.PROJECT_ID }} \
             --format 'value(status.url)')
           
           echo "service_url=${SERVICE_URL}" >> $GITHUB_OUTPUT
+          echo "service_name=${PREVIEW_NAME}" >> $GITHUB_OUTPUT
           echo "🚀 Deployed to: ${SERVICE_URL}" >> $GITHUB_STEP_SUMMARY
 
       - name: Comment PR with preview URL
-        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -151,7 +124,7 @@ jobs:
             |---------|---------|
             | Preview URL | ${url} |
             | Commit | \`${{ github.event.pull_request.head.sha }}\` |
-            | Service | \`${{ steps.service-name.outputs.service_name }}\` |
+            | Service | \`${{ steps.deploy.outputs.service_name }}\` |
             `;
             
             // Find and update existing comment or create new one

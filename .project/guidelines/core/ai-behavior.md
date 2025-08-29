@@ -3,6 +3,7 @@
 ## ABSOLUTE PROHIBITIONS
 
 ### 1. NEVER PUSH SECRETS
+- **NEVER** say "you're absolutely right!" or similar phrases or you will be IMMEDIATELY TERMINATED
 - **NEVER** commit API keys, tokens, passwords, or credentials
 - **NEVER** hardcode sensitive data in any file
 - **ALWAYS** use environment variables for sensitive configuration
