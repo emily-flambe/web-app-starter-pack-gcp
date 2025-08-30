@@ -377,11 +377,16 @@ tail: ## Tail Cloud Run service logs in real-time (shows last 2 minutes, refresh
 	echo "$(BLUE)Refreshing every 3 seconds. Press Ctrl+C to stop...$(NC)"; \
 	echo "$(YELLOW)──────────────────────────────────────────────────────────────$(NC)"; \
 	while true; do \
+		if date --version >/dev/null 2>&1; then \
+			TIMESTAMP=$$(date -u -d '2 minutes ago' '+%Y-%m-%dT%H:%M:%S.000Z'); \
+		else \
+			TIMESTAMP=$$(date -u -v-2M '+%Y-%m-%dT%H:%M:%S.000Z'); \
+		fi; \
 		gcloud logging read \
-			"$$FILTER AND timestamp>=\"$$(date -u -v-2M '+%Y-%m-%dT%H:%M:%S.000Z')\"" \
+			"$$FILTER AND timestamp>=\"$$TIMESTAMP\"" \
 			--project=$(PROJECT_ID) \
 			--format="value(timestamp,textPayload)" \
-			--order=asc 2>/dev/null | tail -20; \
+			--order=asc | tail -20; \
 		sleep 3; \
 	done
 
