@@ -52,7 +52,10 @@ help: ## Show available commands
 	@echo "  $(GREEN)make build$(NC)        - Build Docker image for deployment"
 	@echo "  $(GREEN)make deploy$(NC)       - Deploy to Google Cloud Run"
 	@echo "  $(GREEN)make quick-deploy$(NC) - Deploy directly from source (builds in cloud)"
-	@echo "  $(GREEN)make logs$(NC)         - View Cloud Run logs"
+	@echo "  $(GREEN)make logs$(NC)         - View Cloud Run logs (last 50 entries)"
+	@echo "  $(GREEN)make tail$(NC)         - Tail all Cloud Run logs in real-time"
+	@echo "  $(GREEN)make tail name=XXX$(NC) - Tail specific revision logs"
+	@echo "  $(GREEN)make list-revisions$(NC) - List all Cloud Run revisions with URLs"
 	@echo "  $(GREEN)make status$(NC)       - Check deployment status"
 	@echo "  $(GREEN)make url$(NC)          - Get deployed service URL"
 	@echo ""
@@ -355,6 +358,54 @@ logs: ## View Cloud Run logs
 		--limit 50 \
 		--project $(PROJECT_ID) \
 		--format "table(timestamp, textPayload)"
+
+.PHONY: tail
+tail: ## Tail Cloud Run service logs in real-time (shows last 2 minutes, refreshes every 3 seconds). Usage: make tail [name=revision-name]
+	@if [ "$(PROJECT_ID)" = "your-project-id" ]; then \
+		echo "$(RED)Error: PROJECT_ID not set$(NC)"; \
+		echo "Run 'make init' to configure your project"; \
+		exit 1; \
+	fi
+	@if [ -n "$(name)" ]; then \
+		echo "$(GREEN)Tailing Cloud Run logs for revision: $(name)$(NC)"; \
+		FILTER="resource.type=cloud_run_revision AND resource.labels.revision_name=$(name)"; \
+	else \
+		echo "$(GREEN)Tailing Cloud Run logs for service: $(SERVICE_NAME) (all revisions)$(NC)"; \
+		FILTER="resource.type=cloud_run_revision AND resource.labels.service_name=$(SERVICE_NAME)"; \
+	fi; \
+	echo "$(YELLOW)Project: $(PROJECT_ID) | Region: $(REGION)$(NC)"; \
+	echo "$(BLUE)Refreshing every 3 seconds. Press Ctrl+C to stop...$(NC)"; \
+	echo "$(YELLOW)──────────────────────────────────────────────────────────────$(NC)"; \
+	while true; do \
+		if date --version >/dev/null 2>&1; then \
+			TIMESTAMP=$$(date -u -d '2 minutes ago' '+%Y-%m-%dT%H:%M:%S.000Z'); \
+		else \
+			TIMESTAMP=$$(date -u -v-2M '+%Y-%m-%dT%H:%M:%S.000Z'); \
+		fi; \
+		gcloud logging read \
+			"$$FILTER AND timestamp>=\"$$TIMESTAMP\"" \
+			--project=$(PROJECT_ID) \
+			--format="value(timestamp,textPayload)" \
+			--order=asc | tail -20; \
+		sleep 3; \
+	done
+
+.PHONY: list-revisions
+list-revisions: ## List all Cloud Run revisions for the service
+	@if [ "$(PROJECT_ID)" = "your-project-id" ]; then \
+		echo "$(RED)Error: PROJECT_ID not set$(NC)"; \
+		echo "Run 'make init' to configure your project"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Listing Cloud Run revisions for service: $(SERVICE_NAME)$(NC)"
+	@echo "$(YELLOW)Project: $(PROJECT_ID) | Region: $(REGION)$(NC)"
+	@echo "$(BLUE)──────────────────────────────────────────────────────────────$(NC)"
+	@gcloud run revisions list \
+		--service=$(SERVICE_NAME) \
+		--region=$(REGION) \
+		--project=$(PROJECT_ID) \
+		--format="table(name:label='REVISION NAME',metadata.annotations.'run.googleapis.com/urls':label='PREVIEW URL',status.conditions[0].lastTransitionTime.date('%Y-%m-%d %H:%M'):label='DEPLOYED',spec.containerConcurrency:label='CONCURRENCY',status.traffic.percent:label='TRAFFIC %')"
+	@echo ""
 
 .PHONY: status
 status: ## Check deployment status
